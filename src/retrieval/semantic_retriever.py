@@ -8,14 +8,14 @@ class SemanticRetriever:
         self.chunks = []
         self.embeddings = None
 
-    def index(self,chunks:list[dict]) -> None:
+    def index(self,chunks:list[dict],text_field: str = "text") -> None:
         """
         Convert document chunks into embeddings and store them.
         """
 
         self.chunks=chunks
 
-        texts=[chunk["text"] for chunk in chunks]
+        texts=[chunk[text_field] for chunk in chunks]
 
         self.embeddings=self.model.encode(
             texts,convert_to_numpy=True,

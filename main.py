@@ -1,14 +1,23 @@
 from src.ingestion.document_loader import load_text_document
 from src.ingestion.text_chunker import chunk_by_characters
 from src.retrieval.semantic_retriever import SemanticRetriever
+from src.retrieval.lexical_retriever import LexicalRetriever
+from src.retrieval.hybrid_retriever import HybridRetriever
 from src.ingestion.markdown_chunker import chunk_by_markdown_sections
 from src.evaluation.retrieval_evaluator import RetrievalEvaluator
+from sentence_transformers import CrossEncoder
+from src.retrieval.reranker import Reranker
+from src.retrieval.query_expander import QueryExpander
+from src.generation.context_builder import build_context
+from src.generation.prompt_builder import build_prompt
+from src.generation.generator import OllamaGenerator
 
 
 
 DOCUMENT_PATH = "data/raw/telecom_revenue_knowledge.md"
 
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+RERANKER_MODEL = "cross-encoder/ms-marco-MiniLM-L6-v2"
 
 
 def main():
@@ -21,15 +30,12 @@ def main():
     chunks=chunk_by_markdown_sections(document,DOCUMENT_PATH)
     
     print(f"Indexed chunks: {len(chunks)}")
+    
 
-    #3.Create rtriever
-    retriever=SemanticRetriever(MODEL_NAME)
 
-    #4.Generate and store document embeddings
-    retriever.index(chunks)
 
-    #5.Ask a question
-    #query=" The weather was very hot yesterday."
+    query = "another local operator requests the total incoming voice usage from their subscribers to our network in the last week"
+
 
     EVALUATION_QUERIES = [
     {
@@ -50,6 +56,26 @@ def main():
     },
     {
         "query": "Call volumes increased but the money collected did not increase.",
+        "expected_section": "Usage Revenue",
+    },
+        {
+        "query": "Why subscribers travelling in India using less data?",
+        "expected_section": "Roaming Revenue",
+    },
+    {
+        "query": "another local operator requests the total incoming voice usage from their subscribers to our network in the last week",
+        "expected_section": "Interconnect Revenue",
+    },
+    {
+        "query": "last week VAS revenues seems too high, Should I consult with the product owner?",
+        "expected_section": "Revenue Anomaly Investigation",
+    },
+    {
+        "query": "our OCS voucher CDRs shows highier prepaid revenue in last two days compared to last week",
+        "expected_section": "Prepaid Recharge Revenue",
+    },
+    {
+        "query": "total voice minutes usage seems increasing while prepaid voice revenue drops",
         "expected_section": "Usage Revenue",
     },
 ]
@@ -76,29 +102,93 @@ def main():
         "expected_section": None,
     },
 ]
-    thresholds = [
-        0.00,
-        0.10,
-        0.20,
-        0.25,
-        0.30,
-        0.35,
-    ]
-    evaluator=RetrievalEvaluator(retriever)
 
-    for threshold in thresholds:
+    retrieval_terms = {
+    "Prepaid Recharge Revenue": [
+        "Top up",
+		"Reload",
+		"Prepaid account",
+		"OCS subscriber balance",
+		"Online recharge",
+		"Voucher cards"
+    ],
 
-        metrics=evaluator.evaluate_positive(EVALUATION_QUERIES,top_k=3,min_score=threshold)
-        #print(metrics)
+    "Usage Revenue": [
+        "voice minutes",
+		"chargeable usage",
+		"usage charging",
+		"traffic volume versus charged amount"
+    ],
 
-        negative_metrics=evaluator.evaluate_negatives(NEGATIVE_QUERIES,top_k=1,min_score=threshold)
-        #print(negative_metrics)
+    "Roaming Revenue": [
+        "TAP files",
+		"Inbound subscribers",
+		"Outbound subscribers",
+		"DCH",
+		"Roaming Partner",
+		"TADIGS"
+   
+    
+    ],
 
-        print(f"Threshold={threshold} | Hit@1={metrics["hit_rate_at_1"]:.2%} | Hit@k={metrics["hit_rate_at_k"]:.2%} | Rejection= {negative_metrics["rejection_rate"]:.2%}")
+    "Interconnect Revenue": [
+        "incoming interconnect traffic"
+		"outgoing interconnect traffic"
+		"traffic from another operator"
+		"traffic to another operator",
+		"interconnect settlement",
+		"interconnect tariffs",
+		"flat rate charging",
+		"interconnect billing",
+      
+    ],
+
+    "Revenue Anomaly Investigation": [
+        "unexpected revenue deviation"
+		"abnormal revenue trend"
+		"revenue trend monitoring"
+		"seasonal revenue variation"
+		"holiday revenue variation"
+    ],
+    }
+    
+   
+
+    query = "Our roaming revenue dropped by 20% yesterday. What caused it?"
+
+    #1.Retrieve
+    semantic_retriever=SemanticRetriever(MODEL_NAME)
+    semantic_retriever.index(chunks)
+    #evaluator=RetrievalEvaluator(semantic_retriever)
+
+
+    results=semantic_retriever.search(query=query,
+    top_k=3,
+    min_score=0.0,
+    )
+
+    #2.Build context
+    context = build_context(results)
+
+    #3.Build Prompt
+    prompt = build_prompt(
+    question=query,
+    context=context,
+    )
+
+    #4.Generate
+
+    generator=OllamaGenerator("qwen3:8b")
+
+    answer=generator.generate(prompt)
+
+    print(answer)
+
+
 
 
     
-
+    
 if __name__ == "__main__":
     main()
 
