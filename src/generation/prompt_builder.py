@@ -9,6 +9,8 @@ INSTRUCTIONS:
    clearly state that the available context is insufficient.
 3. Distinguish possible causes from confirmed facts.
 4. Cite the relevant section or sections supporting your answer.
+5. Keep the answer concise and focused on the question.
+6. Do not quote or repeat long passages from the context.
 
 CONTEXT:
 {context}
